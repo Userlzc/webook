@@ -5,6 +5,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"project/internal/repository"
@@ -12,6 +13,7 @@ import (
 	"project/internal/service"
 	"project/internal/web"
 	"project/internal/web/middleware"
+	"project/pkg/ginx/middliware/ratelimit"
 	"strings"
 	"time"
 )
@@ -24,7 +26,10 @@ func main() {
 	db := initDB()
 	router := initWebServer()
 	initUserHdl(db, router)
-	router.Run(":8081")
+	err := router.Run(":8081")
+	if err != nil {
+		panic("端口可能被占用")
+	}
 	// 使用这种写法
 	//hdl := &user2.UserHandler{}
 }
@@ -63,6 +68,11 @@ func initWebServer() *gin.Engine {
 		MaxAge: 12 * time.Hour,
 	}))
 	useJwtSession(router)
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	// 会限流 报429错误http状态码
+	router.Use(ratelimit.NewBuilder(redisClient, time.Minute, 100).Build())
 
 	return router
 }
@@ -85,6 +95,7 @@ func useSession(server *gin.Engine) {
 func useJwtSession(server *gin.Engine) {
 	login := middleware.LoginJwtMiddlewareBuilder{}
 	server.Use(login.CheckLogin())
+
 	/*
 	   优缺点：
 	   1.不依赖三方存储（提高性能）

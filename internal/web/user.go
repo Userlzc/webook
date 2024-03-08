@@ -175,6 +175,7 @@ func (u *UsersHandler) LoginJwt(ctx *gin.Context) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
 		},
+		UserAgent: ctx.GetHeader("User-Agent"),
 	}
 	switch err {
 	case nil:
@@ -214,4 +215,5 @@ var Jwtkey = []byte("")
 type UserClaims struct {
 	Uid int64
 	jwt.RegisteredClaims
+	UserAgent string
 }
