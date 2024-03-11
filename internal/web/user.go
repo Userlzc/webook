@@ -24,7 +24,7 @@ import (
 
 const (
 	emailRegexpPattern    = ""
-	passwordRegexpPattern = ``
+	passwordRegexpPattern = ""
 )
 
 type UsersHandler struct {
@@ -200,13 +200,68 @@ func (u *UsersHandler) LoginJwt(ctx *gin.Context) {
 // 获取信息
 
 func (u *UsersHandler) Profile(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, "获取信息")
+	h, ok := ctx.MustGet("user").(UserClaims)
+	if !ok {
+		// 没有获取到user的信息
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	userinfo, err := u.svc.GetProfile(ctx, h.Uid)
+	if err != nil {
+		ctx.String(http.StatusOK, "系统错误")
+		return
+	}
+	type User struct {
+		Nickname string `json:"nickname"`
+		Email    string `json:"email"`
+		AboutMe  string `json:"aboutMe"`
+		Birthday string `json:"birthday"`
+	}
+	ctx.JSON(http.StatusOK, User{
+		Nickname: userinfo.NickName,
+		Email:    userinfo.Email,
+		AboutMe:  userinfo.AboutMe,
+		Birthday: userinfo.Birthday.Format(time.DateOnly),
+	})
 }
 
 // 修改
 
 func (u *UsersHandler) Edit(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, "修改")
+	type Req struct {
+		Nickname string `json:"nickname"`
+		AboutMe  string `json:"aboutMe"`
+		Birthday string `json:"birthday"`
+	}
+	var req Req
+	err := ctx.Bind(&req)
+	if err != nil {
+		ctx.String(http.StatusOK, "系统错误")
+		return
+	}
+	edu, ok := ctx.MustGet("user").(UserClaims)
+	if !ok {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	// 校验格式
+	bir, err := time.Parse(time.DateOnly, req.Birthday)
+	if err != nil {
+		ctx.String(http.StatusOK, "生日格式不对")
+		return
+	}
+
+	err = u.svc.UpdateNonSensitiveInfo(ctx, domain.User{
+		Id:       edu.Uid,
+		AboutMe:  req.AboutMe,
+		NickName: req.Nickname,
+		Birthday: bir,
+	})
+	if err != nil {
+		ctx.String(http.StatusOK, "系统异常")
+		return
+	}
+	ctx.JSON(http.StatusOK, "修改成功")
 }
 
 var Jwtkey = []byte("")

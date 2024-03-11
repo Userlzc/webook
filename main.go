@@ -5,13 +5,16 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"project/internal/repository"
+	"project/internal/repository/cache"
 	"project/internal/repository/dao"
 	"project/internal/service"
 	"project/internal/web"
 	"project/internal/web/middleware"
+	"project/pkg/ginx/middliware/ratelimit"
 	"strings"
 	"time"
 )
@@ -22,16 +25,27 @@ import (
 func main() {
 
 	db := initDB()
-	router := initWebServer()
-	initUserHdl(db, router)
-	router.Run(":8081")
+	rds := initRedis()
+	router := initWebServer(rds)
+	initUserHdl(db, router, rds)
+	err := router.Run(":8081")
+	if err != nil {
+		panic("端口可能被占用")
+	}
 	// 使用这种写法
 	//hdl := &user2.UserHandler{}
 }
+func initRedis() *redis.Client {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	return redisClient
+}
 
-func initUserHdl(db *gorm.DB, server *gin.Engine) {
+func initUserHdl(db *gorm.DB, server *gin.Engine, rds *redis.Client) {
 	ud := dao.NewUserDao(db)
-	repo := repository.NewUsersRepository(ud)
+	ca := cache.NewUserCache(rds)
+	repo := repository.NewUsersRepository(ud, ca)
 	svc := service.NewUsersService(repo)
 	hdl := web.NewUserHandler(svc)
 	hdl.RegisterRouter(server)
@@ -48,7 +62,7 @@ func initDB() *gorm.DB {
 	}
 	return db
 }
-func initWebServer() *gin.Engine {
+func initWebServer(rds *redis.Client) *gin.Engine {
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
 		AllowCredentials: true,
@@ -63,6 +77,9 @@ func initWebServer() *gin.Engine {
 		MaxAge: 12 * time.Hour,
 	}))
 	useJwtSession(router)
+
+	// 会限流 报429错误http状态码
+	router.Use(ratelimit.NewBuilder(rds, time.Minute, 100).Build())
 
 	return router
 }
@@ -85,6 +102,7 @@ func useSession(server *gin.Engine) {
 func useJwtSession(server *gin.Engine) {
 	login := middleware.LoginJwtMiddlewareBuilder{}
 	server.Use(login.CheckLogin())
+
 	/*
 	   优缺点：
 	   1.不依赖三方存储（提高性能）

@@ -55,3 +55,14 @@ func (svc *UsersService) Login(ctx context.Context, email string, password strin
 	return u, nil
 
 }
+
+func (svc *UsersService) GetProfile(ctx context.Context, uid int64) (domain.User, error) {
+
+	return svc.repo.FindById(ctx, uid)
+
+}
+
+func (svc *UsersService) UpdateNonSensitiveInfo(ctx context.Context, user domain.User) error {
+	return svc.repo.UpdateNonZeroFields(ctx, user)
+
+}
