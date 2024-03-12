@@ -6,7 +6,6 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"project/internal/repository"
 	"project/internal/repository/cache"
@@ -15,6 +14,7 @@ import (
 	"project/internal/web"
 	"project/internal/web/middleware"
 	"project/pkg/ginx/middliware/ratelimit"
+	wire2 "project/wire"
 	"strings"
 	"time"
 )
@@ -23,24 +23,14 @@ import (
 // ctrl +F 查找该文件中匹配的东西
 
 func main() {
+	server := wire2.InitWebServer()
 
-	db := initDB()
-	rds := initRedis()
-	codeSvc := initCodeService(rds)
-	router := initWebServer(rds)
-	initUserHdl(db, router, rds, codeSvc)
-	err := router.Run(":8081")
+	err := server.Run(":8081")
 	if err != nil {
 		panic("端口可能被占用")
 	}
 	// 使用这种写法
 	//hdl := &user2.UserHandler{}
-}
-func initRedis() *redis.Client {
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
-	return redisClient
 }
 
 func initUserHdl(db *gorm.DB, server *gin.Engine, rds redis.Cmdable, codeSvc service.CodeService) {
@@ -52,25 +42,6 @@ func initUserHdl(db *gorm.DB, server *gin.Engine, rds redis.Cmdable, codeSvc ser
 	hdl.RegisterRouter(server)
 }
 
-func initCodeService(rds redis.Cmdable) service.CodeService {
-	cc := cache.NewCodeCache(rds)
-	crepo := repository.NewCodeRepository(cc)
-	//sms := tencent.NewSmsService(nil, "", "")
-	return service.NewCodeService(nil, crepo)
-
-}
-
-func initDB() *gorm.DB {
-	dsn := "root:123456@tcp(127.0.0.1:3306)/xiaohongshu?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		panic("数据库驱动错误")
-	}
-	if err := dao.InitTables(db); err != nil {
-		panic("创建数据库表错误")
-	}
-	return db
-}
 func initWebServer(rds *redis.Client) *gin.Engine {
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{

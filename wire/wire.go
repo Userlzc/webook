@@ -1,4 +1,6 @@
-package main
+//go:build wireinject
+
+package wire
 
 import (
 	"github.com/gin-gonic/gin"
@@ -35,6 +37,10 @@ func InitWebServer() *gin.Engine {
 		service.NewCodeService,
 
 		web.NewUserHandler,
+
+		ioc.InitWebServer,
+		// gin中间件
+		ioc.InitGinMiddlewares,
 	)
 	return gin.Default()
 
