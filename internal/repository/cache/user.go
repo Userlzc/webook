@@ -14,19 +14,24 @@ import (
  * @Date 2024/3/8 22:56
  **/
 
-type UserCache struct {
+type UserCache interface {
+	Get(ctx context.Context, id int64) (domain.User, error)
+	Set(ctx context.Context, u domain.User) error
+}
+
+type RedisUserCache struct {
 	cmd        redis.Cmdable // 操作redis
 	expiration time.Duration // 过期时间
 }
 
-func NewUserCache(cmd redis.Cmdable) *UserCache {
-	return &UserCache{
+func NewUserCache(cmd redis.Cmdable) UserCache {
+	return &RedisUserCache{
 		cmd:        cmd,
 		expiration: time.Minute * 15, // 也可以从外边传
 	}
 
 }
-func (cache *UserCache) Get(ctx context.Context, id int64) (domain.User, error) {
+func (cache *RedisUserCache) Get(ctx context.Context, id int64) (domain.User, error) {
 	key := cache.key(id)
 	data, err := cache.cmd.Get(ctx, key).Result()
 	if err != nil {
@@ -38,7 +43,7 @@ func (cache *UserCache) Get(ctx context.Context, id int64) (domain.User, error) 
 	return u, err
 
 }
-func (cache *UserCache) Set(ctx context.Context, u domain.User) error {
+func (cache *RedisUserCache) Set(ctx context.Context, u domain.User) error {
 	key := cache.key(u.Id)
 	// value是结构体数据 redis不能存，需序列化
 	data, err := json.Marshal(u)
@@ -49,7 +54,7 @@ func (cache *UserCache) Set(ctx context.Context, u domain.User) error {
 
 }
 
-func (cache *UserCache) key(uid int64) string {
+func (cache *RedisUserCache) key(uid int64) string {
 	return fmt.Sprintf("user-info-%d", uid)
 
 }

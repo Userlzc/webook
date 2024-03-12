@@ -19,14 +19,22 @@ var (
 	ErrRecordNotFound = gorm.ErrRecordNotFound
 )
 
-type UserDao struct {
+type UserDao interface {
+	Insert(ctx context.Context, u User) error
+	FindByEmail(ctx context.Context, email string) (User, error)
+	FindById(ctx context.Context, uid int64) (User, error)
+	UpdateById(ctx context.Context, entity User) error
+	FindByPhone(ctx context.Context, phone string) (User, error)
+}
+
+type GormUserDao struct {
 	db *gorm.DB
 }
 
-func NewUserDao(db *gorm.DB) *UserDao {
-	return &UserDao{db: db}
+func NewUserDao(db *gorm.DB) UserDao {
+	return &GormUserDao{db: db}
 }
-func (dao *UserDao) Insert(ctx context.Context, u User) error {
+func (dao *GormUserDao) Insert(ctx context.Context, u User) error {
 	// 注意数据库中唯一索引冲突的问题
 	now := time.Now().Unix()
 	u.Ctime = now
@@ -43,20 +51,20 @@ func (dao *UserDao) Insert(ctx context.Context, u User) error {
 	return err
 }
 
-func (dao *UserDao) FindByEmail(ctx context.Context, email string) (User, error) {
+func (dao *GormUserDao) FindByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := dao.db.WithContext(ctx).Where("email=?", email).First(&u).Error
 	return u, err
 
 }
 
-func (dao *UserDao) FindById(ctx context.Context, uid int64) (User, error) {
+func (dao *GormUserDao) FindById(ctx context.Context, uid int64) (User, error) {
 	var u User
 	err := dao.db.WithContext(ctx).Where("id=?", uid).First(&u).Error
 	return u, err
 }
 
-func (dao *UserDao) UpdateById(ctx context.Context, entity User) error {
+func (dao *GormUserDao) UpdateById(ctx context.Context, entity User) error {
 
 	return dao.db.WithContext(ctx).Model(&entity).Where("id = ?", entity.Id).Updates(map[string]any{
 		"utime":     time.Now().UnixMilli(),
@@ -67,19 +75,25 @@ func (dao *UserDao) UpdateById(ctx context.Context, entity User) error {
 
 }
 
+func (dao *GormUserDao) FindByPhone(ctx context.Context, phone string) (User, error) {
+	var u User
+	err := dao.db.WithContext(ctx).Where("phone=?", phone).First(&u).Error
+	return u, err
+
+}
+
 type User struct {
-	Id       int64  `gorm:"primaryKey,autoIncrement"`
-	Email    string `gorm:"unique"`
+	Id int64 `gorm:"primaryKey,autoIncrement"`
+	// NullString  代表可以为空
+	Email    sql.NullString `gorm:"unique"`
 	Password string
 	// 创建时间
 	Ctime int64
 	// 更新时间
 	Utime int64
-
-	Phone sql.NullString `gorm:"unique"`
-	//json 存储
-
-	NickName string `gorm:"type=varchar(128)"`
+	// NullString  代表可以为空
+	Phone    sql.NullString `gorm:"unique"`
+	NickName string         `gorm:"type=varchar(128)"`
 	Birthday int64
 	AboutMe  string `gorm:"type=varchar(4096)"`
 }

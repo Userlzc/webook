@@ -14,19 +14,26 @@ import (
  **/
 
 var (
-	ErrDuplicateEmail        = repository.ErrDuplicateEmail
+	ErrDuplicateEmail        = repository.ErrDuplicateUser
 	ErrInvalidUserOrPassword = errors.New("用户不存在或密码错误")
 )
 
-type UsersService struct {
-	repo *repository.UsersRepository
+type UserService interface {
+	SignUp(ctx context.Context, u domain.User) error
+	Login(ctx context.Context, email string, password string) (domain.User, error)
+	GetProfile(ctx context.Context, uid int64) (domain.User, error)
+	UpdateNonSensitiveInfo(ctx context.Context, user domain.User) error
+	FindOrCreate(ctx context.Context, phone string) (domain.User, error)
+}
+type usersService struct {
+	repo repository.UserRepository
 }
 
-func NewUsersService(repo *repository.UsersRepository) *UsersService {
-	return &UsersService{repo: repo}
+func NewUsersService(repo repository.UserRepository) UserService {
+	return &usersService{repo: repo}
 }
 
-func (svc *UsersService) SignUp(ctx context.Context, u domain.User) error {
+func (svc *usersService) SignUp(ctx context.Context, u domain.User) error {
 	pwd, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -36,7 +43,7 @@ func (svc *UsersService) SignUp(ctx context.Context, u domain.User) error {
 
 }
 
-func (svc *UsersService) Login(ctx context.Context, email string, password string) (domain.User, error) {
+func (svc *usersService) Login(ctx context.Context, email string, password string) (domain.User, error) {
 
 	u, err := svc.repo.FindByEmail(ctx, email)
 
@@ -56,13 +63,31 @@ func (svc *UsersService) Login(ctx context.Context, email string, password strin
 
 }
 
-func (svc *UsersService) GetProfile(ctx context.Context, uid int64) (domain.User, error) {
+func (svc *usersService) GetProfile(ctx context.Context, uid int64) (domain.User, error) {
 
 	return svc.repo.FindById(ctx, uid)
 
 }
 
-func (svc *UsersService) UpdateNonSensitiveInfo(ctx context.Context, user domain.User) error {
+func (svc *usersService) UpdateNonSensitiveInfo(ctx context.Context, user domain.User) error {
 	return svc.repo.UpdateNonZeroFields(ctx, user)
+
+}
+
+func (svc *usersService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
+	u, err := svc.repo.FindByPhone(ctx, phone)
+	if err != repository.ErrUserNotFound {
+		return u, err
+	}
+	// 那就说明用户没有找到，需要创建
+	err = svc.repo.Create(ctx, u)
+	// 两种可能 一种是唯一索引冲突 另一种恰好是系统错误
+
+	if err != nil && err != repository.ErrDuplicateUser {
+		return domain.User{}, err
+	}
+	// 要么err==nil 要么ErrDuplicateUser 也代表用户存在
+	// 主从延迟  理论上讲强制走主库
+	return svc.repo.FindByPhone(ctx, phone)
 
 }

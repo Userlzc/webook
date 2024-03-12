@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"project/internal/domain"
 	"project/internal/repository/cache"
 	"project/internal/repository/dao"
+	"time"
 )
 
 /**
@@ -14,31 +16,36 @@ import (
  **/
 
 var (
-	ErrDuplicateEmail = dao.ErrDuplicateEmail
-	ErrUserNotFound   = dao.ErrRecordNotFound
+	ErrDuplicateUser = dao.ErrDuplicateEmail
+	ErrUserNotFound  = dao.ErrRecordNotFound
 )
 
-type UsersRepository struct {
-	dao   *dao.UserDao
-	cache *cache.UserCache
+type UserRepository interface {
+	Create(ctx context.Context, u domain.User) error
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
+	FindById(ctx context.Context, uid int64) (domain.User, error)
+	UpdateNonZeroFields(ctx context.Context, user domain.User) error
+	FindByPhone(ctx context.Context, phone string) (domain.User, error)
 }
 
-func NewUsersRepository(repo *dao.UserDao, cache *cache.UserCache) *UsersRepository {
-	return &UsersRepository{
+type CacheUsersRepository struct {
+	dao   dao.UserDao
+	cache cache.UserCache
+}
+
+func NewCacheUsersRepository(repo dao.UserDao, cache cache.UserCache) UserRepository {
+	return &CacheUsersRepository{
 		dao:   repo,
 		cache: cache,
 	}
 }
 
-func (repo *UsersRepository) Create(ctx context.Context, u domain.User) error {
-	return repo.dao.Insert(ctx, dao.User{
-		Email:    u.Email,
-		Password: u.Password,
-	})
+func (repo *CacheUsersRepository) Create(ctx context.Context, u domain.User) error {
+	return repo.dao.Insert(ctx, repo.toDaoUser(u))
 
 }
 
-func (repo *UsersRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
+func (repo *CacheUsersRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := repo.dao.FindByEmail(ctx, email)
 	if err != nil {
 		return domain.User{}, err
@@ -46,15 +53,8 @@ func (repo *UsersRepository) FindByEmail(ctx context.Context, email string) (dom
 	return repo.toDomain(u), nil
 
 }
-func (repo *UsersRepository) toDomain(u dao.User) domain.User {
-	return domain.User{
-		Id:       u.Id,
-		Email:    u.Email,
-		Password: u.Password,
-	}
-}
 
-func (repo *UsersRepository) FindById(ctx context.Context, uid int64) (domain.User, error) {
+func (repo *CacheUsersRepository) FindById(ctx context.Context, uid int64) (domain.User, error) {
 	du, err := repo.cache.Get(ctx, uid)
 	if err == nil {
 		return du, err
@@ -82,18 +82,47 @@ func (repo *UsersRepository) FindById(ctx context.Context, uid int64) (domain.Us
 
 }
 
-func (repo *UsersRepository) UpdateNonZeroFields(ctx context.Context, user domain.User) error {
+func (repo *CacheUsersRepository) UpdateNonZeroFields(ctx context.Context, user domain.User) error {
 
 	return repo.dao.UpdateById(ctx, repo.toDaoUser(user))
 
 }
 
-func (repo *UsersRepository) toDaoUser(user domain.User) dao.User {
+func (repo *CacheUsersRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
+	u, err := repo.dao.FindByPhone(ctx, phone)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return repo.toDomain(u), nil
+
+}
+func (repo *CacheUsersRepository) toDomain(u dao.User) domain.User {
+	return domain.User{
+		Id:       u.Id,
+		Email:    u.Email.String,
+		Phone:    u.Phone.String,
+		Password: u.Password,
+		AboutMe:  u.AboutMe,
+		NickName: u.NickName,
+		Birthday: time.UnixMilli(u.Birthday),
+	}
+}
+func (repo *CacheUsersRepository) toDaoUser(u domain.User) dao.User {
 	return dao.User{
-		Id:       user.Id,
-		Birthday: user.Birthday.UnixMilli(),
-		NickName: user.NickName,
-		AboutMe:  user.AboutMe,
+		Id: u.Id,
+		Email: sql.NullString{
+			String: u.Email,
+			Valid:  u.Email != "",
+		},
+		Phone: sql.NullString{
+			String: u.Phone,
+			Valid:  u.Phone != "",
+		},
+		// valid 取值为true不为空 取值为false为空
+		Password: u.Password,
+		Birthday: u.Birthday.UnixMilli(),
+		NickName: u.NickName,
+		AboutMe:  u.AboutMe,
 	}
 
 }

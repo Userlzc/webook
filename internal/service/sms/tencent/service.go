@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
+	sms2 "project/internal/service/sms"
 )
 
 type SmsService struct {
@@ -18,6 +19,15 @@ type SmsService struct {
 	appId string
 	// 签名
 	signature string
+}
+
+func NewSmsService(client *sms.Client, appId string, signature string) sms2.Service {
+	return &SmsService{
+		client:    client,
+		appId:     appId,
+		signature: signature,
+	}
+
 }
 
 func (s *SmsService) Send(ctx context.Context, tplId string, args []string, numbers ...string) error {
@@ -63,14 +73,5 @@ func (s *SmsService) Send(ctx context.Context, tplId string, args []string, numb
 
 	}
 	return nil
-
-}
-
-func NewService(client *sms.Client, appId string, signature string) *SmsService {
-	return &SmsService{
-		client:    client,
-		appId:     appId,
-		signature: signature,
-	}
 
 }

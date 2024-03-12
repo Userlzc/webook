@@ -26,8 +26,9 @@ func main() {
 
 	db := initDB()
 	rds := initRedis()
+	codeSvc := initCodeService(rds)
 	router := initWebServer(rds)
-	initUserHdl(db, router, rds)
+	initUserHdl(db, router, rds, codeSvc)
 	err := router.Run(":8081")
 	if err != nil {
 		panic("端口可能被占用")
@@ -42,13 +43,21 @@ func initRedis() *redis.Client {
 	return redisClient
 }
 
-func initUserHdl(db *gorm.DB, server *gin.Engine, rds *redis.Client) {
+func initUserHdl(db *gorm.DB, server *gin.Engine, rds redis.Cmdable, codeSvc service.CodeService) {
 	ud := dao.NewUserDao(db)
 	ca := cache.NewUserCache(rds)
-	repo := repository.NewUsersRepository(ud, ca)
+	repo := repository.NewCacheUsersRepository(ud, ca)
 	svc := service.NewUsersService(repo)
-	hdl := web.NewUserHandler(svc)
+	hdl := web.NewUserHandler(svc, codeSvc)
 	hdl.RegisterRouter(server)
+}
+
+func initCodeService(rds redis.Cmdable) service.CodeService {
+	cc := cache.NewCodeCache(rds)
+	crepo := repository.NewCodeRepository(cc)
+	//sms := tencent.NewSmsService(nil, "", "")
+	return service.NewCodeService(nil, crepo)
+
 }
 
 func initDB() *gorm.DB {
